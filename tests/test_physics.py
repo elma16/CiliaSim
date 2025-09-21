@@ -1,0 +1,50 @@
+import numpy as np
+from ciliasim.params import Params, BOUNDARY
+from ciliasim.geometry import voronoi_edges, cell_areas
+from ciliasim.physics import accumulate_forces_numba
+from ciliasim.utils import build_target_areas
+
+
+def ref_dense(points, types, areas, target_areas, src, dst, params):
+    N = points.shape[0]
+    deg = np.bincount(src, minlength=N) + np.bincount(dst, minlength=N)
+    F = np.zeros((N, 2), float)
+    # build symmetric adjacency from edges
+    adj = np.zeros((N, N), int)
+    adj[src, dst] = 1
+    adj[dst, src] = 1
+    for i in range(N):
+        nbrs = np.where(adj[i] == 1)[0]
+        for j in nbrs:
+            diff = points[j] - points[i]
+            dist = np.linalg.norm(diff)
+            if dist == 0:
+                continue
+            u = diff / dist
+            s_i = params.target_spring_length - dist
+            if types[i] == BOUNDARY:
+                s_i *= params.boundary_spring_factor
+            s_i = max(s_i, -params.critical_length_delta)
+            p_i = (
+                0.0
+                if types[i] == BOUNDARY
+                else (target_areas[i] - areas[i]) / max(1, deg[i])
+            )
+            # contribution on j from i
+            F[j] += (s_i + p_i) * u
+    return F
+
+
+def test_edge_forces_match_reference(triangle_points):
+    P, types, _ = triangle_points
+    params = Params()
+    src, dst, vor = voronoi_edges(P)
+    areas = cell_areas(P, types, vor)
+    target_areas = build_target_areas(types, params.target_cell_area)
+    cilia = np.zeros((P.shape[0], 2))
+    flow = np.zeros(2)
+    F_edge = accumulate_forces_numba(
+        P, types, areas, target_areas, src, dst, cilia, flow, params
+    )
+    F_ref = ref_dense(P, types, areas, target_areas, src, dst, params)
+    assert np.allclose(F_edge, F_ref, atol=1e-10)
