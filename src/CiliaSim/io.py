@@ -14,7 +14,21 @@ def save_simulation(
     cell_states: dict[int, list[list[float]]],
     force_states: dict[int, dict[int, list[float]]],
     net_energy: np.ndarray | list[float] = (),
-):
+) -> None:
+    """
+    Serialize simulation outputs to a JSON file.
+
+    Args:
+        path: Output file path to write.
+        x: Grid width parameter saved for metadata.
+        y: Grid height parameter saved for metadata.
+        cilia_density: Fraction of cells that are multiciliated.
+        types: Array of shape (N,) of cell types.
+        target_areas: Array of shape (N,) of target cell areas.
+        cell_states: Mapping from time index to a list of [x, y] positions.
+        force_states: Mapping from time index to per-cell force vectors.
+        net_energy: Sequence of energy values per time step.
+    """
     data: dict[str, Any] = {
         "parameters": {"x": x, "y": y, "cilia_density": cilia_density},
         "cell_types": types.tolist(),

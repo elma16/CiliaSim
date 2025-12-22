@@ -7,7 +7,18 @@ from typing import Tuple
 def _reflect_point_across_segment(
     a: np.ndarray, b: np.ndarray, c: np.ndarray
 ) -> Tuple[bool, np.ndarray]:
-    """Mirror c across line segment ab if angle at c with a and b is obtuse (cos < 0)."""
+    """
+    Mirror point c across line segment ab when the angle at c is obtuse.
+
+    Args:
+        a: First endpoint of the segment, shape (2,).
+        b: Second endpoint of the segment, shape (2,).
+        c: Point to test and potentially reflect, shape (2,).
+
+    Returns:
+        Tuple (ok, reflected) where ok indicates whether the reflection was
+        applied, and reflected is the reflected point (or c unchanged).
+    """
     ac = c - a
     bc = c - b
     ac_norm = np.linalg.norm(ac)
@@ -29,6 +40,16 @@ def _reflect_point_across_segment(
 
 
 def build_voronoi_neighbors(vor: Voronoi, N: int) -> list[set[int]]:
+    """
+    Build neighbor sets from Voronoi ridge adjacency.
+
+    Args:
+        vor: Precomputed Voronoi tessellation.
+        N: Number of sites (points).
+
+    Returns:
+        List of length N where each entry is a set of neighboring site indices.
+    """
     nb = [set() for _ in range(N)]
     for i, j in vor.ridge_points:
         nb[i].add(int(j))
@@ -37,7 +58,16 @@ def build_voronoi_neighbors(vor: Voronoi, N: int) -> list[set[int]]:
 
 
 def _has_unbounded_nonboundary(vor: Voronoi, types: np.ndarray) -> bool:
-    """Return True if any non-boundary cell has an unbounded Voronoi region (-1 in region)."""
+    """
+    Check for unbounded Voronoi regions among non-boundary cells.
+
+    Args:
+        vor: Precomputed Voronoi tessellation.
+        types: Array of shape (N,) of cell types; boundary cells are type 1.
+
+    Returns:
+        True if any non-boundary cell has an unbounded region (-1 in region).
+    """
     N = types.shape[0]
     for i in range(N):
         if types[i] == 1:  # boundary
@@ -56,9 +86,18 @@ def _add_enclosing_boundary_ring(
     factor: float = 5.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Append an outer ring of `n` boundary points around the current point cloud.
-    The ring radius is `factor` times the max side of the bounding box (with a small floor).
-    Returns updated (points, types, boundary_cycle) where the cycle is set to the new ring.
+    Append an outer ring of boundary points around the current point cloud.
+
+    Args:
+        points: Array of shape (N, 2) of site coordinates.
+        types: Array of shape (N,) of cell types.
+        boundary_cycle: Existing boundary cycle indices (unused for ring layout).
+        n: Number of boundary points to create on the ring.
+        factor: Radius scale relative to the largest side of the bounding box.
+
+    Returns:
+        Updated (points, types, boundary_cycle) where types for the new ring
+        points are set to boundary (1) and the cycle is the new ring order.
     """
     # center and scale from current points
     pmin = points.min(axis=0)
@@ -84,10 +123,24 @@ def evaluate_boundary(
     points: np.ndarray, types: np.ndarray, boundary_cycle: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, Voronoi]:
     """
-    Recompute Voronoi first, then ensure boundary cycle connectivity (prev/next neighbors),
-    add mirrored boundary points where needed, prune sharp boundary nodes,
-    rebuild adjacency inputs from fresh Voronoi.
-    Returns (points, types, boundary_cycle, vor).
+    Enforce a valid boundary configuration and return an updated Voronoi.
+
+    The process is:
+    - Compute an initial Voronoi and add an enclosing ring if interior cells
+      are unbounded or if the cycle is too small.
+    - Enforce boundary cycle connectivity in the neighbor graph.
+    - Add reflected boundary points where the cycle is too sparse.
+    - Prune boundary nodes with very sharp interior angles.
+    - Recompute Voronoi after edits.
+
+    Args:
+        points: Array of shape (N, 2) of site coordinates.
+        types: Array of shape (N,) of cell types; boundary cells are type 1.
+        boundary_cycle: Array of boundary indices in cyclic order.
+
+    Returns:
+        Tuple (points, types, boundary_cycle, vor) with updated arrays and the
+        final Voronoi tessellation.
     """
     # First Voronoi pass to check boundedness
     vor = Voronoi(points)

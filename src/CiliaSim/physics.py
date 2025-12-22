@@ -18,8 +18,23 @@ def _compute_edge_contribs(
     boundary_factor: float,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Per-edge contributions to node forces.
-    Returns (contrib_to_dst[E,2], contrib_to_src[E,2]).
+    Compute per-edge force contributions for scatter-add accumulation.
+
+    Args:
+        points: Array of shape (N, 2) of site coordinates.
+        types: Array of shape (N,) of cell types.
+        areas: Array of shape (N,) of current cell areas.
+        target_areas: Array of shape (N,) of target cell areas.
+        degree: Array of shape (N,) of node degrees.
+        src: Array of shape (E,) of edge source indices.
+        dst: Array of shape (E,) of edge destination indices.
+        target_spring_length: Rest length for edge springs.
+        critical_length_delta: Clamp for negative spring extension.
+        boundary_factor: Spring scaling factor for boundary nodes.
+
+    Returns:
+        Tuple (contrib_to_dst, contrib_to_src) each of shape (E, 2) containing
+        the per-edge force vectors to scatter-add to dst and src nodes.
     """
     E = src.shape[0]
     contrib_dst = np.zeros((E, 2), dtype=np.float64)
@@ -84,9 +99,21 @@ def accumulate_forces_numba(
     params: Params,
 ) -> np.ndarray:
     """
-    Assemble net node forces F (N,2) from edges and exogenous terms.
-    cilia_forces: (N,2) with zeros for non-multiciliated cells.
-    flow_force: (2,) applied ONLY to multiciliated cells to match the model.
+    Assemble net node forces from edge and exogenous contributions.
+
+    Args:
+        points: Array of shape (N, 2) of site coordinates.
+        types: Array of shape (N,) of cell types.
+        areas: Array of shape (N,) of current cell areas.
+        target_areas: Array of shape (N,) of target cell areas.
+        src: Array of shape (E,) of edge source indices.
+        dst: Array of shape (E,) of edge destination indices.
+        cilia_forces: Array of shape (N, 2) with zeros for non-multiciliated.
+        flow_force: Array of shape (2,) applied only to multiciliated cells.
+        params: Simulation parameter bundle.
+
+    Returns:
+        Array of shape (N, 2) of net forces for each node.
     """
     N = points.shape[0]
     degree = np.bincount(src, minlength=N) + np.bincount(dst, minlength=N)

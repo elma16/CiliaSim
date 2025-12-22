@@ -12,13 +12,33 @@ from scipy.spatial import Voronoi
 
 @dataclass
 class State:
+    """
+    Container for simulator state arrays.
+
+    Attributes:
+        points: Array of shape (N, 2) of site coordinates.
+        types: Array of shape (N,) of cell types.
+        boundary_cycle: Array of boundary indices in cyclic order.
+    """
+
     points: np.ndarray  # (N,2)
     types: np.ndarray  # (N,)
     boundary_cycle: np.ndarray  # (B,)
 
 
 class Simulator:
-    def __init__(self, state: State, params: Params | None = None):
+    """
+    Evolve a Voronoi-based tissue model with cached topology updates.
+    """
+
+    def __init__(self, state: State, params: Params | None = None) -> None:
+        """
+        Initialize the simulator with a state and optional parameters.
+
+        Args:
+            state: State object with points, types, and boundary cycle arrays.
+            params: Optional Params; defaults to Params() if not provided.
+        """
         self.params = params or Params()
         self.points = state.points.astype(np.float64, copy=True)
         self.types = state.types.astype(np.int32, copy=True)
@@ -36,14 +56,34 @@ class Simulator:
         self._cached_vor = None
         self._cached_areas = None
 
-    def set_uniform_cilia(self, direction: np.ndarray, magnitude: float):
+    def set_uniform_cilia(self, direction: np.ndarray, magnitude: float) -> None:
+        """
+        Apply the same cilia force vector to all multiciliated cells.
+
+        Args:
+            direction: 2D direction vector (not normalized internally).
+            magnitude: Scalar magnitude to scale the direction.
+
+        Notes:
+            Multiciliated cells are identified by type value 2.
+        """
         force = np.asarray(direction, dtype=np.float64) * float(magnitude)
         idx = np.where(self.types == 2)[0]
         for i in idx:
             self.cilia_dict[int(i)] = force.copy()
         self._update_cilia_forces()
 
-    def set_random_cilia(self, magnitude: float, seed: int = 42):
+    def set_random_cilia(self, magnitude: float, seed: int = 42) -> None:
+        """
+        Assign random cilia directions to multiciliated cells.
+
+        Args:
+            magnitude: Magnitude of each cilia force vector.
+            seed: Seed for the RNG for reproducible directions.
+
+        Notes:
+            Multiciliated cells are identified by type value 2.
+        """
         rng = np.random.default_rng(seed)
         from .utils import random_cilia_forces
 
@@ -53,11 +93,24 @@ class Simulator:
             self.cilia_dict[int(i)] = vecs[i]
         self._update_cilia_forces()
 
-    def set_flow(self, direction: np.ndarray, magnitude: float):
+    def set_flow(self, direction: np.ndarray, magnitude: float) -> None:
+        """
+        Set the global flow force applied to multiciliated cells.
+
+        Args:
+            direction: 2D direction vector (not normalized internally).
+            magnitude: Scalar magnitude to scale the direction.
+        """
         self.flow_force = np.asarray(direction, dtype=np.float64) * float(magnitude)
 
-    def _update_cilia_forces(self):
-        """Update the cached cilia forces array."""
+    def _update_cilia_forces(self) -> None:
+        """
+        Rebuild the cached per-cell cilia forces array.
+
+        The array is resized to match the current number of points and filled
+        with zeros before applying entries from cilia_dict. Indices outside
+        the current range are ignored.
+        """
         n = self.points.shape[0]
         if self._cilia_forces.shape[0] != n:
             self._cilia_forces = np.zeros((n, 2), dtype=np.float64)
@@ -67,7 +120,7 @@ class Simulator:
             if k < n:
                 self._cilia_forces[k] = v
 
-    def step(self, topology_every: int = 1, area_every: int = 1, i: int = 0):
+    def step(self, topology_every: int = 1, area_every: int = 1, i: int = 0) -> None:
         """
         Step the simulation.
 
@@ -75,6 +128,12 @@ class Simulator:
             topology_every: Update topology (boundary + edges) every N steps
             area_every: Recompute areas every N steps (must divide topology_every)
             i: Current iteration number
+
+        Notes:
+            On topology updates, boundary handling, Voronoi edges, and areas are
+            recomputed and cached. On area-only updates, topology is reused and
+            areas are recomputed from a fresh Voronoi. Otherwise cached areas
+            are reused for speed.
         """
         # Full topology update: boundary, Voronoi, edges, areas
         if i % topology_every == 0:
@@ -124,7 +183,7 @@ class Simulator:
         topology_every: int = 1,
         area_every: int = 1,
         progress: bool = True,
-    ):
+    ) -> np.ndarray:
         """
         Run simulation.
 
@@ -133,6 +192,9 @@ class Simulator:
             topology_every: Update topology every N steps (expensive)
             area_every: Update areas every N steps (moderate cost)
             progress: Show progress bar
+
+        Returns:
+            Copy of the final points array after all steps.
         """
         it = range(steps)
         if progress:
