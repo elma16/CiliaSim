@@ -1,5 +1,5 @@
 import numpy as np
-from ciliasim.params import Params, BOUNDARY
+from ciliasim.params import Params, BOUNDARY, MULTICILIATED
 from ciliasim.geometry import voronoi_edges, cell_areas
 from ciliasim.physics import accumulate_forces_numba
 from ciliasim.utils import build_target_areas
@@ -48,3 +48,23 @@ def test_edge_forces_match_reference(triangle_points):
     )
     F_ref = ref_dense(P, types, areas, target_areas, src, dst, params)
     assert np.allclose(F_edge, F_ref, atol=1e-10)
+
+
+def test_exogenous_forces_only_apply_to_multiciliated():
+    points = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]], dtype=float)
+    types = np.array([MULTICILIATED, 0, BOUNDARY], dtype=int)
+    areas = np.zeros(3, dtype=float)
+    target_areas = np.zeros(3, dtype=float)
+    src = np.array([], dtype=np.int32)
+    dst = np.array([], dtype=np.int32)
+    cilia = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=float)
+    flow = np.array([0.5, -0.5], dtype=float)
+    params = Params()
+
+    F = accumulate_forces_numba(
+        points, types, areas, target_areas, src, dst, cilia, flow, params
+    )
+
+    expected = np.zeros_like(cilia)
+    expected[0] = cilia[0] + flow
+    assert np.allclose(F, expected)
